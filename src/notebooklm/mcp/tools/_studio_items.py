@@ -39,6 +39,7 @@ __all__ = [
     "StudioResolvedItem",
     "compact_studio_item",
     "hyphenated_type",
+    "partition_studio_refs",
     "resolve_studio_item",
     "studio_items",
     "summarize_studio_item",
@@ -277,6 +278,31 @@ def _match_studio_ref(
         lines.append("\nUse a more specific title or the id.")
         raise AmbiguousIdError(ref, candidate_ids, "\n".join(lines))
     return None
+
+
+def partition_studio_refs(
+    refs: list[str], items: list[dict[str, Any]]
+) -> tuple[list[StudioResolvedItem], list[dict[str, str]]]:
+    """Resolve an explicit subset against one snapshot, retaining genuine misses.
+
+    Ambiguity aborts the whole plan before any deletion. UUIDs must be present
+    in the snapshot, and aliases of the same item resolve to one deletion.
+    """
+    resolved: list[StudioResolvedItem] = []
+    not_found: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for ref in refs:
+        match = _match_studio_ref(items, ref, None)
+        if match is None:
+            not_found.append({"item_id": ref, "error": f"Studio item not found: {ref}"})
+        elif match["id"] not in seen:
+            seen.add(match["id"])
+            resolved.append(
+                StudioResolvedItem(
+                    item_id=match["id"], type=match["type"], title=match.get("title")
+                )
+            )
+    return resolved, not_found
 
 
 async def resolve_studio_item(

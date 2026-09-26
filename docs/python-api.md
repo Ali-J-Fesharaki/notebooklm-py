@@ -2309,7 +2309,7 @@ concrete mind-map facades, and first-party strict orchestration.
 | `get(notebook_id, note_id)` | `str, str` | `Note` | Get note by ID; raises `NoteNotFoundError` on a miss. After `delete`, Android projects absence; Web can still return a cleared tombstone `Note`. See [Web vs Android inventory](web-android-public-behavior.md). |
 | `get_or_none(notebook_id, note_id)` | `str, str` | `Note \| None` | Optional lookup; returns `None` when absent |
 | `update(notebook_id, note_id, content, title)` | `str, str, str, str` | `None` | Update note content and title |
-| `delete(notebook_id, note_id)` | `str, str` | `None` | Delete note (idempotent; returns `None` whether or not it existed) |
+| `delete(notebook_id, note_id)` | `str, str \| list[str]` | `None` | Delete one or several notes with one delete request (idempotent). Duplicate IDs are removed; an empty list is a no-op. |
 | `list_mind_maps(notebook_id)` | `str` | `list[Any]` | List mind maps in the notebook. Android returns minimal `[id, content]` compatibility rows; Web returns full note rows. See [Web vs Android inventory](web-android-public-behavior.md). |
 | `delete_mind_map(notebook_id, mind_map_id)` | `str, str` | `None` | Delete a mind map (idempotent; returns `None` whether or not it existed) |
 
@@ -2324,6 +2324,9 @@ await client.notes.update(nb_id, note.id, "Updated content", "New Title")
 
 # Delete a note
 await client.notes.delete(nb_id, note.id)
+
+# Delete an explicit batch in one write (Web and Android)
+await client.notes.delete(nb_id, [item.id for item in notes])
 
 # Save a chat answer as a citation-rich note (preserves [N] hover links).
 # Use ``client.chat.save_answer_as_note(...)`` — the chat-owned canonical

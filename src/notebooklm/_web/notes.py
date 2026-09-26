@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING, Any
 
 from .._idempotency import call_unconfirmed_on_transport_loss
 from .._lookup import unwrap_or_raise
-from .._notes import NotesAPI
+from .._notes import NotesAPI, _normalize_note_ids
 from ..exceptions import DecodingError, NoteNotFoundError, RPCError
 from ..rpc import safe_index
 from ..rpc.types import RPCMethod
@@ -477,8 +477,8 @@ class NoteService:
             raise_on_null_status=True,
         )
 
-    async def delete_note(self, notebook_id: str, note_id: str) -> None:
-        """Soft-delete a note row.
+    async def delete_note(self, notebook_id: str, note_id: str | list[str]) -> None:
+        """Soft-delete one or several note rows in a single request.
 
         Returns ``None``. Idempotent: a missing note still succeeds
         (``DELETE_NOTE`` is ``allow_null=True`` with no missing-signal). The
@@ -486,7 +486,10 @@ class NoteService:
         ``NoteBackedMindMapService.delete_mind_map``) returns ``None`` as of
         v0.7.0 (issue #1211).
         """
-        params = [notebook_id, None, [note_id]]
+        note_ids = _normalize_note_ids(note_id)
+        if not note_ids:
+            return
+        params = [notebook_id, None, note_ids]
         await self._rpc.rpc_call(
             RPCMethod.DELETE_NOTE,
             params,
@@ -661,8 +664,8 @@ class WebNotesAPI(NotesAPI):
                 raise NoteNotFoundError(note_id)
             await self._notes.update_note(notebook_id, note_id, content, title)
 
-    async def delete(self, notebook_id: str, note_id: str) -> None:
-        """Delete a note from the notebook.
+    async def delete(self, notebook_id: str, note_id: str | builtins.list[str]) -> None:
+        """Delete one or several notes with one delete request.
 
         Note: This clears the note content/title rather than removing it
         from the list entirely. Google may garbage collect cleared notes later.
@@ -673,7 +676,9 @@ class WebNotesAPI(NotesAPI):
 
         Args:
             notebook_id: The notebook ID.
-            note_id: The note ID.
+            note_id: One ID or a list of IDs. Duplicates are removed; an empty
+                list is a no-op. Explicit note-backed mind-map IDs are accepted,
+                just as in the single-ID path; interactive maps use artifacts.delete.
 
         .. versionchanged:: 0.7.0
             **Breaking change:** previously returned a hardcoded ``True``;
