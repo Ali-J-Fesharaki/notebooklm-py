@@ -682,6 +682,9 @@ Text notes use one delete request; artifacts, including explicitly selected mind
 maps, use their existing kind-aware delete paths. The result contains `deleted`
 and `not_found` arrays with counts. Missing IDs never become claimed deletions;
 ambiguous names abort the plan before any write. Omitting both selectors is an error.
+An incomplete Studio inventory also aborts before any write. Batch steps share the
+configured operation deadline; if a later step fails, error metadata retains earlier
+mutation evidence.
 
 `share_set_user` accepts either `email` + `permission` or a `grants` array:
 

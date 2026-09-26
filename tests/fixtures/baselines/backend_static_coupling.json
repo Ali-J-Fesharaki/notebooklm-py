@@ -9986,7 +9986,16 @@
     },
     {
       "kind": "from",
-      "lineno": 16,
+      "lineno": 10,
+      "scope": null,
+      "scope_kind": "module",
+      "source": "notebooklm.mcp.tools._studio_delete",
+      "target": "notebooklm.options",
+      "type_only": false
+    },
+    {
+      "kind": "from",
+      "lineno": 17,
       "scope": null,
       "scope_kind": "module",
       "source": "notebooklm.mcp.tools._studio_delete",
@@ -10044,16 +10053,16 @@
       "scope": null,
       "scope_kind": "module",
       "source": "notebooklm.mcp.tools._studio_items",
-      "target": "notebooklm._app.resolve",
+      "target": "notebooklm._app.artifacts",
       "type_only": false
     },
     {
       "kind": "from",
-      "lineno": 30,
+      "lineno": 25,
       "scope": null,
       "scope_kind": "module",
       "source": "notebooklm.mcp.tools._studio_items",
-      "target": "notebooklm._app.serialize",
+      "target": "notebooklm._app.resolve",
       "type_only": false
     },
     {
@@ -10062,7 +10071,7 @@
       "scope": null,
       "scope_kind": "module",
       "source": "notebooklm.mcp.tools._studio_items",
-      "target": "notebooklm.exceptions",
+      "target": "notebooklm._app.serialize",
       "type_only": false
     },
     {
@@ -10071,12 +10080,21 @@
       "scope": null,
       "scope_kind": "module",
       "source": "notebooklm.mcp.tools._studio_items",
+      "target": "notebooklm.exceptions",
+      "type_only": false
+    },
+    {
+      "kind": "from",
+      "lineno": 33,
+      "scope": null,
+      "scope_kind": "module",
+      "source": "notebooklm.mcp.tools._studio_items",
       "target": "notebooklm.types",
       "type_only": false
     },
     {
       "kind": "from",
-      "lineno": 36,
+      "lineno": 37,
       "scope": null,
       "scope_kind": "module",
       "source": "notebooklm.mcp.tools._studio_items",
@@ -11560,7 +11578,7 @@
       "modules": 76
     },
     "mcp": {
-      "lines": 11901,
+      "lines": 11917,
       "modules": 42
     },
     "root": {
@@ -11589,13 +11607,13 @@
     }
   },
   "summary": {
-    "authored_lines": 152114,
+    "authored_lines": 152130,
     "authored_modules": 487,
     "class_local_edges": 0,
-    "cross_subsystem_edges": 1271,
+    "cross_subsystem_edges": 1273,
     "dynamic_import_calls": 10,
     "function_local_edges": 88,
-    "module_level_edges": 1183,
+    "module_level_edges": 1185,
     "type_only_edges": 134
   },
   "version": 1

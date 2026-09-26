@@ -21,6 +21,7 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from ..._app.artifacts import require_complete_artifact_listing
 from ..._app.resolve import (
     FULL_ID_PATTERN,
     AmbiguousIdError,
@@ -107,6 +108,7 @@ async def studio_items(
     *,
     include_created_at: bool = False,
     include_artifact_meta: bool = False,
+    require_complete: bool = False,
 ) -> list[dict[str, Any]]:
     """Fetch + merge a notebook's text notes and studio artifacts into one list.
 
@@ -129,11 +131,19 @@ async def studio_items(
     projection notes get. Notes are untouched by this flag. It defaults off so the
     by-ref resolver and the default list paths stay byte-identical.
 
+    When ``require_complete`` is set, incomplete artifact reads raise before
+    resolution can mistake an unavailable backing for a missing item.
+
     Items are keyed by id (notes first) so a hypothetical future note∩artifact
     overlap can't double-list — this never fires today (``notes.list`` excludes
     mind maps, the only rows both listings could share).
     """
-    notes, artifacts = await asyncio.gather(client.notes.list(nb_id), client.artifacts.list(nb_id))
+    artifact_listing = (
+        require_complete_artifact_listing(client, nb_id)
+        if require_complete
+        else client.artifacts.list(nb_id)
+    )
+    notes, artifacts = await asyncio.gather(client.notes.list(nb_id), artifact_listing)
     items: dict[str, dict[str, Any]] = {}
     for note in notes:
         item: dict[str, Any] = {

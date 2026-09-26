@@ -15,6 +15,9 @@ from notebooklm.exceptions import RPCError  # noqa: E402
 from notebooklm.mcp.tools import sharing as sharing_tools  # noqa: E402
 from notebooklm.mcp.tools import studio as studio_tools  # noqa: E402
 from notebooklm.types import (  # noqa: E402
+    ArtifactListing,
+    ArtifactListingComponent,
+    ArtifactListingFailure,
     ArtifactType,
     ShareAccess,
     SharePermission,
@@ -141,6 +144,32 @@ async def test_studio_batch_ambiguous_title_aborts_before_deleting(mcp_call, stu
     studio_client.artifacts.list.return_value[0].title = "Second"
     with pytest.raises(ToolError, match="(?i)ambiguous"):
         await mcp_call("studio_delete", {"notebook": NB, "items": ["First", "Second"]})
+    studio_client.notes.delete.assert_not_awaited()
+    studio_client.artifacts.delete.assert_not_awaited()
+
+
+@pytest.mark.parametrize("confirm", [False, True])
+async def test_studio_batch_incomplete_listing_aborts_before_reporting_or_deleting(
+    mcp_call, studio_client, confirm
+):
+    studio_client.artifacts.list_with_status = AsyncMock(
+        return_value=ArtifactListing(
+            items=(),
+            is_complete=False,
+            failures=(
+                ArtifactListingFailure(
+                    component=ArtifactListingComponent.NOTE_BACKED_MIND_MAPS,
+                    error_type="RPCError",
+                    message="The note-backed mind-map listing is unavailable",
+                ),
+            ),
+        )
+    )
+    with pytest.raises(ToolError, match="Artifact lookup is incomplete.*note_backed_mind_maps"):
+        await mcp_call(
+            "studio_delete", {"notebook": NB, "items": [NOTE_A, MAP], "confirm": confirm}
+        )
+    studio_client.artifacts.list_with_status.assert_awaited_once_with(NB)
     studio_client.notes.delete.assert_not_awaited()
     studio_client.artifacts.delete.assert_not_awaited()
 
