@@ -126,6 +126,53 @@ async def test_studio_batch_all_missing_is_a_noop(mcp_call, studio_client, items
     studio_client.artifacts.delete.assert_not_awaited()
 
 
+@pytest.mark.parametrize("confirm", [False, True])
+async def test_studio_batch_deduplicates_missing_ids(mcp_call, studio_client, confirm):
+    """Preview and confirmed counts use unique targets even when targets are absent."""
+    result = await mcp_call(
+        "studio_delete",
+        {
+            "notebook": NB,
+            "items": [NOTE_A, NOTE_A.upper(), MISSING, MISSING.upper()],
+            "confirm": confirm,
+        },
+    )
+    payload = result.structured_content
+    if confirm:
+        assert (payload["deleted_count"], payload["not_found_count"], payload["total_count"]) == (
+            1,
+            1,
+            2,
+        )
+        studio_client.notes.delete.assert_awaited_once_with(NB, [NOTE_A])
+    else:
+        payload = payload["preview"]
+        assert payload["count"] == 1
+        studio_client.notes.delete.assert_not_awaited()
+    assert [item["item_id"] for item in payload["not_found"]] == [MISSING]
+
+
+async def test_source_batch_canonicalizes_ids_and_counts_unique_misses(mcp_call, mock_client):
+    """Confirmed source deletion resolves uppercase UUIDs and deduplicates both buckets."""
+    mock_client.sources.list = AsyncMock(return_value=[SimpleNamespace(id=NOTE_A, title="Source")])
+    mock_client.sources.delete_many = AsyncMock()
+    result = await mcp_call(
+        "source_delete",
+        {
+            "notebook": NB,
+            "sources": [NOTE_A.upper(), NOTE_A, MISSING, MISSING.upper()],
+            "confirm": True,
+        },
+    )
+    payload = result.structured_content
+    assert (payload["deleted_count"], payload["not_found_count"], payload["total_count"]) == (
+        1,
+        1,
+        2,
+    )
+    mock_client.sources.delete_many.assert_awaited_once_with(NB, [NOTE_A])
+
+
 @pytest.mark.parametrize(
     "args",
     [

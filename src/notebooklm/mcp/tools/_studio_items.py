@@ -301,10 +301,13 @@ def partition_studio_refs(
     resolved: list[StudioResolvedItem] = []
     not_found: list[dict[str, str]] = []
     seen: set[str] = set()
+    seen_missing: set[str] = set()
     for ref in refs:
         match = _match_studio_ref(items, ref, None)
         if match is None:
-            not_found.append({"item_id": ref, "error": f"Studio item not found: {ref}"})
+            if ref.casefold() not in seen_missing:
+                seen_missing.add(ref.casefold())
+                not_found.append({"item_id": ref, "error": f"Studio item not found: {ref}"})
         elif match["id"] not in seen:
             seen.add(match["id"])
             resolved.append(

@@ -607,6 +607,7 @@ class TestDeleteNote:
             ["nb_123", None, ["note_1", "note_2", "note_3"]],
             source_path="/notebook/nb_123",
             allow_null=True,
+            raise_on_null_status=True,
         )
         assert ids == ["note_1", "note_2", "note_1", "note_3"]
 

@@ -2318,6 +2318,9 @@ Batch deletion returns no per-note receipt. After an error or cancellation, re-r
 before retrying. Web listings exclude deleted tombstones. Error operation metadata
 may be absent or contain no mutation entries or note IDs, so it cannot establish
 each note's final state.
+Web note reads and deletes propagate explicit server rejections, including permission
+denials. An already-missing single note remains a successful delete. A batch reporting
+not-found succeeds only if a fresh inventory confirms every selected note is absent.
 
 **Example:**
 ```python
@@ -2442,6 +2445,13 @@ knowing before you build on this:
   whole request — including the users that are present — and reports no failure.
   A plural removal therefore needs a share-status preflight and post-verification,
   not a wider entry list, so it is deliberately not offered as a one-liner.
+
+The Web backend verifies every requested user permission against the sharing-status
+readback. A missing recipient, wrong permission, or incomplete permission row raises
+an `RPCError` with `unconfirmed=True` and `inspect_and_reconcile` recovery guidance.
+This also applies to `add_user()` and `update_user()`. Inspect `get_status()` before
+retrying: some grants or invitation emails may already have been applied. Matching
+preserves local-part case and ignores domain case; it does not infer email aliases.
 
 **Example:**
 ```python

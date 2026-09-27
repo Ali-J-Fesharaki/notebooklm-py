@@ -681,7 +681,8 @@ and prefixes, so a renamed or newly created item cannot become a new target.
 Text notes use one delete request; artifacts, including explicitly selected mind
 maps, use their existing kind-aware delete paths. The result contains `deleted`
 and `not_found` arrays with counts. Missing IDs never become claimed deletions;
-ambiguous names abort the plan before any write. Omitting both selectors is an error.
+repeated references, including missing IDs, count once. Ambiguous names abort the
+plan before any write. Omitting both selectors is an error.
 An incomplete Studio inventory also aborts before any write. Batch steps share the
 configured operation deadline. Deleting a mix of notes and artifacts is not atomic,
 and an interrupted note batch can leave only some deletions applied. Web returns no
@@ -708,7 +709,11 @@ defaults to `viewer`; set mixed permissions inside `grants`. `notify` (default
 `false`) and `message` apply to the whole call. Empty or oversized batches and duplicate
 email entries are rejected before opening the client. Split larger recipient sets into
 separately reviewed batches; this per-call cap does not change the notebook's collaborator
-limit. The result uses the existing updated sharing-status shape.
+limit. The result uses the existing updated sharing-status shape. On Web, every
+requested recipient and permission must appear in the readback before the tool
+reports `updated`. A mismatch raises an unconfirmed, non-retriable error; inspect
+`share_status` before issuing another grant, because invitations may already have
+been sent.
 
 ## Troubleshooting
 
