@@ -2321,6 +2321,8 @@ each note's final state.
 Web note reads and deletes propagate explicit server rejections, including permission
 denials. An already-missing single note remains a successful delete. A batch reporting
 not-found succeeds only if a fresh inventory confirms every selected note is absent.
+That verification requires the entire inventory to be parseable: an unrelated malformed
+row also raises `DecodingError`, because an incomplete read cannot prove absence.
 
 **Example:**
 ```python

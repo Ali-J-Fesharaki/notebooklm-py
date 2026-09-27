@@ -32,8 +32,9 @@ from typing import TYPE_CHECKING, Any
 from .._idempotency import call_unconfirmed_on_transport_loss
 from .._lookup import unwrap_or_raise
 from .._notes import NotesAPI, _normalize_note_ids
+from .._types.enums import GrpcStatusCode
 from ..exceptions import DecodingError, NoteNotFoundError, RPCError
-from ..rpc import GrpcStatusCode, safe_index
+from ..rpc import safe_index
 from ..rpc.types import RPCMethod
 from ..types import Note
 from .note_tasks import NoteTaskRegistry
