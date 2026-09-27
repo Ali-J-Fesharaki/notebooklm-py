@@ -47,6 +47,8 @@ except PackageNotFoundError:
     )
 
 # Public API: Authentication
+# Public API: Marp presentations & slide extraction
+from . import marp
 from .auth import AuthTokens
 
 # Public API: Client
@@ -120,6 +122,19 @@ from .exceptions import (
     ValidationError,
     # Cross-domain umbrellas (wait/poll timeouts)
     WaitTimeoutError,
+)
+from .marp import (
+    ArticleToMarp,
+    MarpPresenter,
+    MarpResult,
+    NativeSlideData,
+    SlideContent,
+    SlideSection,
+    export_marp,
+    extract_native_slide_images,
+    extract_slide_content,
+    generate_presentation,
+    render_marp_markdown,
 )
 
 # Public API: Types and dataclasses
@@ -431,4 +446,17 @@ __all__ = [
     "TableCell",
     "TextSpan",
     "utf16_len",
+    # Marp presentations & slide extraction
+    "marp",
+    "ArticleToMarp",
+    "MarpPresenter",
+    "MarpResult",
+    "NativeSlideData",
+    "SlideContent",
+    "SlideSection",
+    "export_marp",
+    "extract_native_slide_images",
+    "extract_slide_content",
+    "generate_presentation",
+    "render_marp_markdown",
 ]

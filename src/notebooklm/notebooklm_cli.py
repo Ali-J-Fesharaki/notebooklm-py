@@ -103,6 +103,7 @@ from .cli import (
     generate,
     label,
     language,
+    marp,
     mcp,
     note,
     profile,
@@ -268,6 +269,7 @@ cli.add_command(share)
 cli.add_command(skill)
 cli.add_command(research)
 cli.add_command(language)
+cli.add_command(marp)
 cli.add_command(profile)
 cli.add_command(mcp)
 cli.add_command(usage)

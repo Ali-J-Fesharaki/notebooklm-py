@@ -71,6 +71,7 @@ from .helpers import (
 )
 from .label_cmd import label
 from .language_cmd import get_language, language
+from .marp_cmd import marp
 from .mcp_cmd import mcp
 from .note_cmd import note
 from .notebook_cmd import register_notebook_commands
@@ -107,6 +108,7 @@ __all__ = [
     "skill",
     "research",
     "language",
+    "marp",
     "profile",
     "mcp",
     "usage",

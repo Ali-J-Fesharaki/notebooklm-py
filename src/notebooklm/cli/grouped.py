@@ -87,6 +87,7 @@ class SectionedGroup(click.Group):
                     "agent",
                     "skill",
                     "language",
+                    "marp",
                     "mcp",
                 ],
             ),
