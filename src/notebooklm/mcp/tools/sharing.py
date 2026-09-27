@@ -28,10 +28,10 @@ This module imports NO ``click`` / ``rich`` / ``cli``.
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from fastmcp import Context
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..._app.views import VIEW_LEVEL_LABELS as _VIEW_LEVEL_LABELS
 from ..._app.views import label as _label
@@ -59,6 +59,9 @@ from .._resolve import resolve_notebook
 #: Wire input → enum. OWNER is intentionally absent (cannot be assigned via share).
 _PERMISSION_INPUT = {"editor": SharePermission.EDITOR, "viewer": SharePermission.VIEWER}
 _VIEW_LEVEL_INPUT = {"full": ShareViewLevel.FULL_NOTEBOOK, "chat": ShareViewLevel.CHAT_ONLY}
+
+#: Keep each confirmed sharing invocation within an explicitly reviewable subset.
+MAX_SHARE_GRANTS = 100
 
 
 class UserGrant(BaseModel):
@@ -169,9 +172,10 @@ def register(mcp: Any) -> None:
         notify: bool = False,
         message: str = "",
         confirm: bool = False,
-        grants: list[UserGrant] | None = None,
+        grants: Annotated[list[UserGrant], Field(min_length=1, max_length=MAX_SHARE_GRANTS)]
+        | None = None,
     ) -> dict[str, Any]:
-        """Upsert access: ``email`` + ``permission`` OR ``grants`` [{email, permission}].
+        """Upsert access: ``email`` + ``permission`` OR 1–100 ``grants`` [{email, permission}].
 
         Preview lists every grant; confirm with its canonical ``notebook_id``.
         Batches allow mixed editor/viewer permissions in one write. ``notify``
@@ -181,8 +185,6 @@ def register(mcp: Any) -> None:
             if (email is None) == (grants is None):
                 raise ValidationError("Provide either 'email' or 'grants', not both")
             if grants is not None:
-                if not grants:
-                    raise ValidationError("'grants' must contain at least one user")
                 if permission != "viewer":
                     raise ValidationError("Set each grant's permission inside 'grants'")
                 seen: set[str] = set()

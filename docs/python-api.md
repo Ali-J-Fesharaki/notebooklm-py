@@ -2313,6 +2313,12 @@ concrete mind-map facades, and first-party strict orchestration.
 | `list_mind_maps(notebook_id)` | `str` | `list[Any]` | List mind maps in the notebook. Android returns minimal `[id, content]` compatibility rows; Web returns full note rows. See [Web vs Android inventory](web-android-public-behavior.md). |
 | `delete_mind_map(notebook_id, mind_map_id)` | `str, str` | `None` | Delete a mind map (idempotent; returns `None` whether or not it existed) |
 
+Batch deletion returns no per-note receipt. After an error or cancellation, re-read
+`notes.list(notebook_id)` and compare the selected IDs to identify surviving notes
+before retrying. Web listings exclude deleted tombstones. Error operation metadata
+may be absent or contain no mutation entries or note IDs, so it cannot establish
+each note's final state.
+
 **Example:**
 ```python
 # Create and manage plain-text notes

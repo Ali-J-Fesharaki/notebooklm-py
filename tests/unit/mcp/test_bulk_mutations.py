@@ -263,6 +263,42 @@ async def test_share_batch_defaults_each_grant_to_viewer_and_no_email(mcp_call, 
     )
 
 
+@pytest.mark.parametrize("confirm", [False, True])
+async def test_share_batch_limit_rejects_before_client_open(mcp_call, monkeypatch, confirm):
+    """An oversized recipient list cannot reach preview or mutation client acquisition."""
+    get_client = AsyncMock(side_effect=AssertionError("unexpected client open"))
+    monkeypatch.setattr(sharing_tools, "get_client", get_client)
+    grants = [{"email": f"recipient-{index}@example.test"} for index in range(101)]
+    with pytest.raises(ToolError):
+        await mcp_call("share_set_user", {"notebook": NB, "grants": grants, "confirm": confirm})
+    get_client.assert_not_awaited()
+
+
+@pytest.mark.parametrize("confirm", [False, True])
+async def test_share_batch_accepts_the_recipient_limit(mcp_call, mock_client, confirm):
+    """The maximum supported subset previews in full and confirms with one write."""
+    grants = [
+        {"email": f"recipient-{index}@example.test", "permission": "viewer"} for index in range(100)
+    ]
+    mock_client.sharing.set_users = AsyncMock(
+        return_value=ShareStatus(NB, False, ShareAccess.RESTRICTED, ShareViewLevel.FULL_NOTEBOOK)
+    )
+    result = await mcp_call(
+        "share_set_user", {"notebook": NB, "grants": grants, "confirm": confirm}
+    )
+    if confirm:
+        assert result.structured_content["status"] == "updated"
+        mock_client.sharing.set_users.assert_awaited_once_with(
+            NB,
+            [(grant["email"], SharePermission.VIEWER) for grant in grants],
+            notify=False,
+            welcome_message="",
+        )
+    else:
+        assert result.structured_content["preview"]["grants"] == grants
+        mock_client.sharing.set_users.assert_not_awaited()
+
+
 @pytest.mark.parametrize(
     "args",
     [

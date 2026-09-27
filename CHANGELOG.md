@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   previews an explicit subset, batches text notes, routes artifacts and mind maps
   by kind, and reports `deleted` / `not_found` results. Confirmed batches require
   the canonical IDs from the preview.
-- **Bulk MCP sharing (#2000).** `share_set_user(grants=[...])` accepts mixed
+- **Bulk MCP sharing (#2000).** `share_set_user(grants=[...])` accepts 1–100 mixed
   editor/viewer grants through the existing `sharing.set_users()` batch API.
   Confirmation previews include every grantee; notification and welcome-message
   settings apply to the whole batch. Together with the existing

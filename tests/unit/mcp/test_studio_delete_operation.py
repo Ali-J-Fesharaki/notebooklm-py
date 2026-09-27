@@ -89,8 +89,10 @@ async def test_batch_studio_delete_shares_one_configured_budget(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_batch_studio_delete_retains_prior_confirmed_note_write():
-    """A later rejected artifact write preserves the confirmed note deletion."""
+async def test_batch_studio_delete_preserves_nested_mutation_evidence():
+    """When nested writes supply journal entries, a later failure preserves that evidence."""
+    # These doubles isolate aggregation; real Web note deletes can have no journal
+    # entries or per-note evidence (covered by the NotesAPI integration tests).
     client, supervisor = _client()
 
     async def notes_delete(*_):

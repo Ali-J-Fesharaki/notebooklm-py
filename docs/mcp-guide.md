@@ -683,11 +683,13 @@ maps, use their existing kind-aware delete paths. The result contains `deleted`
 and `not_found` arrays with counts. Missing IDs never become claimed deletions;
 ambiguous names abort the plan before any write. Omitting both selectors is an error.
 An incomplete Studio inventory also aborts before any write. Batch steps share the
-configured operation deadline; if a later step fails, error metadata retains earlier
-mutation evidence. Deleting a mix of notes and artifacts is not atomic. After a
-failure, refresh `studio_list` to reconcile the remaining IDs before retrying.
+configured operation deadline. Deleting a mix of notes and artifacts is not atomic,
+and an interrupted note batch can leave only some deletions applied. Web returns no
+per-note receipt; operation metadata may be absent or lack mutation entries and does
+not prove each selected note's final state. After an error or cancellation, refresh `studio_list`
+and compare the selected IDs before retrying any remaining items.
 
-`share_set_user` accepts either `email` + `permission` or a `grants` array:
+`share_set_user` accepts either `email` + `permission` or a `grants` array of 1–100 users:
 
 ```json
 {
@@ -703,9 +705,10 @@ failure, refresh `studio_list` to reconcile the remaining IDs before retrying.
 The preview lists every grantee and permission. Re-submit the same grants and
 canonical notebook ID with `confirm=true` to apply them in one write. Each grant
 defaults to `viewer`; set mixed permissions inside `grants`. `notify` (default
-`false`) and `message` apply to the whole call. Empty batches and duplicate email
-entries are rejected before any write. The result uses the existing updated
-sharing-status shape.
+`false`) and `message` apply to the whole call. Empty or oversized batches and duplicate
+email entries are rejected before opening the client. Split larger recipient sets into
+separately reviewed batches; this per-call cap does not change the notebook's collaborator
+limit. The result uses the existing updated sharing-status shape.
 
 ## Troubleshooting
 
