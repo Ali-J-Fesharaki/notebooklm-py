@@ -113,7 +113,9 @@ class NoteService:
         normalized: list[Any] = []
         for item in rows:
             row = self._normalize_note_row(item)
-            if strict and (row is None or not NoteRow(row).id):
+            if strict and (
+                row is None or not NoteRow(row).id or self.classify_row(row) is NoteRowKind.UNKNOWN
+            ):
                 raise DecodingError(
                     "Incomplete note inventory: unrecognized note row",
                     method_id=RPCMethod.GET_NOTES_AND_MIND_MAPS.value,
@@ -129,7 +131,7 @@ class NoteService:
         responses use the same first response field for rows and a second
         timestamp field, so this helper also accepts a flat row list.
         """
-        if strict and result is not None and not isinstance(result, list):
+        if strict and not isinstance(result, list):
             raise DecodingError(
                 "Incomplete note inventory: unrecognized container",
                 method_id=RPCMethod.GET_NOTES_AND_MIND_MAPS.value,
@@ -158,6 +160,28 @@ class NoteService:
         )
         if self._is_note_row_like(first):
             return result
+        if strict and (len(result) > 1 or first is None):
+            timestamp = (
+                safe_index(
+                    result,
+                    1,
+                    method_id=RPCMethod.GET_NOTES_AND_MIND_MAPS.value,
+                    source="NoteService._extract_note_row_container",
+                )
+                if len(result) == 2
+                else None
+            )
+            if (
+                not isinstance(timestamp, list)
+                or len(timestamp) != 2
+                or any(type(part) is not int for part in timestamp)
+            ):
+                raise DecodingError(
+                    "Incomplete note inventory: unrecognized container",
+                    method_id=RPCMethod.GET_NOTES_AND_MIND_MAPS.value,
+                )
+            # Recorded empty notebooks omit the row list but still return the
+            # timestamp. Only that complete envelope can make None prove absence.
         if isinstance(first, list):
             return first
         if strict and first is not None:

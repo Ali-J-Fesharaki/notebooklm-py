@@ -62,15 +62,19 @@ async def test_note_delete_keeps_empty_and_missing_single_success(auth_tokens, h
 
 
 @pytest.mark.parametrize("remaining", [False, True])
+@pytest.mark.parametrize("layout", ["wrapped", "timestamped", "flat"])
 async def test_note_batch_not_found_verifies_every_member(
-    auth_tokens, httpx_mock, build_rpc_response, remaining
+    auth_tokens, httpx_mock, build_rpc_response, remaining, layout
 ):
     """A batch NOT_FOUND is benign only when fresh inventory proves all targets absent."""
     rows = [["note-1", None, 2], ["other", ["other", "Unselected", None, None, "Other"]]]
     if remaining:
         rows.append(["note-2", ["note-2", "Still present", None, None, "Second"]])
+    inventory = rows if layout == "flat" else [rows]
+    if layout == "timestamped":
+        inventory.append([123, 0])
     httpx_mock.add_response(text=_status_response(RPCMethod.DELETE_NOTE, 5))
-    httpx_mock.add_response(text=build_rpc_response(RPCMethod.GET_NOTES_AND_MIND_MAPS, [rows]))
+    httpx_mock.add_response(text=build_rpc_response(RPCMethod.GET_NOTES_AND_MIND_MAPS, inventory))
     async with NotebookLMClient(auth_tokens, config=_config()) as client:
         if remaining:
             with pytest.raises(RPCError) as caught:
@@ -182,7 +186,34 @@ async def test_sharing_rejection_never_uses_an_existing_grant_as_success(
 
 
 @pytest.mark.parametrize(
-    "inventory", [[[{"id": "note-1", "content": "present"}]], [42], 0, False, "", {}, [[[""]]]]
+    "inventory",
+    [
+        [[{"id": "note-1", "content": "present"}]],
+        [42],
+        0,
+        False,
+        "",
+        {},
+        [[[""]]],
+        pytest.param(None, id="null-result"),
+        pytest.param([None], id="null-container"),
+        pytest.param([None, [123, "bad"]], id="null-container-with-invalid-timestamp"),
+        pytest.param([[["other"]]], id="missing-content"),
+        pytest.param([[["other", 123]]], id="invalid-content"),
+        pytest.param([[["other", None, 99]]], id="unknown-tombstone"),
+        pytest.param([[], ["note-1", "Still present"]], id="empty-row-hides-live-note"),
+        pytest.param(
+            [[], ["note-1", ["note-1", "Still present", None, None, "Title"]]],
+            id="empty-row-hides-current-note",
+        ),
+        pytest.param(
+            [[], [123, 0], ["note-1", "Still present"]],
+            id="extra-field-hides-live-note",
+        ),
+        pytest.param([[], ["123", 0]], id="string-timestamp"),
+        pytest.param([[], [True, 0]], id="boolean-timestamp"),
+        pytest.param([[], [123]], id="incomplete-timestamp"),
+    ],
 )
 async def test_note_batch_not_found_requires_complete_inventory(
     auth_tokens, httpx_mock, build_rpc_response, inventory
@@ -190,6 +221,29 @@ async def test_note_batch_not_found_requires_complete_inventory(
     """Discarded malformed rows cannot prove that a refused deletion batch succeeded."""
     httpx_mock.add_response(text=_status_response(RPCMethod.DELETE_NOTE, 5))
     httpx_mock.add_response(text=build_rpc_response(RPCMethod.GET_NOTES_AND_MIND_MAPS, inventory))
+    async with NotebookLMClient(auth_tokens, config=_config()) as client:
+        with pytest.raises(DecodingError, match="Incomplete note inventory"):
+            await client.notes.delete("nb-1", ["note-1", "note-2"])
+    assert len(httpx_mock.get_requests()) == 2
+
+
+@pytest.mark.parametrize("inventory", [[], [[]], [[], [123, 0]], [None, [1778873028, 870765000]]])
+async def test_note_batch_not_found_accepts_explicit_empty_inventory(
+    auth_tokens, httpx_mock, build_rpc_response, inventory
+):
+    """Empty row lists and the recorded timestamped empty envelope prove absence."""
+    httpx_mock.add_response(text=_status_response(RPCMethod.DELETE_NOTE, 5))
+    httpx_mock.add_response(text=build_rpc_response(RPCMethod.GET_NOTES_AND_MIND_MAPS, inventory))
+    async with NotebookLMClient(auth_tokens, config=_config()) as client:
+        assert await client.notes.delete("nb-1", ["note-1", "note-2"]) is None
+    assert len(httpx_mock.get_requests()) == 2
+
+
+@pytest.mark.parametrize("code", [None, 0])
+async def test_note_batch_not_found_rejects_null_verification(auth_tokens, httpx_mock, code):
+    """A null result is insufficient evidence even without an explicit RPC failure."""
+    httpx_mock.add_response(text=_status_response(RPCMethod.DELETE_NOTE, 5))
+    httpx_mock.add_response(text=_status_response(RPCMethod.GET_NOTES_AND_MIND_MAPS, code))
     async with NotebookLMClient(auth_tokens, config=_config()) as client:
         with pytest.raises(DecodingError, match="Incomplete note inventory"):
             await client.notes.delete("nb-1", ["note-1", "note-2"])
