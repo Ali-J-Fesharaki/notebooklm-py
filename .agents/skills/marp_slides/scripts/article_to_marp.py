@@ -33,7 +33,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from notebooklm import NotebookLMClient
+import httpx
+
+from notebooklm import NotebookLMClient, ArtifactSlide, ArtifactType
+from notebooklm._auth.cookies import load_httpx_cookies
 
 logger = logging.getLogger(__name__)
 
@@ -133,12 +136,26 @@ class SlideContent:
     keywords: list[str]
 
 
+@dataclass(frozen=True)
+class NativeSlideData:
+    """One rendered slide extracted from the native NotebookLM slide deck."""
+    index: int
+    image_path: str | None  # local path to downloaded slide image
+    image_url: str | None   # original remote URL
+    alt_text: str | None
+    text: str | None
+    width: int | None
+    height: int | None
+
+
 @dataclass
 class GenerationResult:
     marp_path: str
     native_path: str | None = None
     export_path: str | None = None
     notebook_id: str | None = None
+    native_slides: list["NativeSlideData"] = field(default_factory=list)
+    images_dir: str | None = None
 
 
 # ─── Content extraction ────────────────────────────────────────────────────
@@ -210,6 +227,67 @@ async def extract_slide_content(
     result = await client.chat.ask(notebook_id, prompt)
     logger.info("Extraction complete (%d chars)", len(result.answer))
     return _parse_slide_content(result.answer)
+
+
+async def extract_native_slides(
+    client: NotebookLMClient,
+    notebook_id: str,
+    artifact_id: str,
+    output_dir: Path,
+) -> list[NativeSlideData]:
+    """Extract rendered slide images and text from a native NotebookLM slide deck.
+
+    Downloads each slide's image to *output_dir* and returns structured data
+    containing local image paths, alt text, and the full slide text.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Get the artifact with its slides data
+    artifact = await client.artifacts.get(notebook_id, artifact_id)
+    if not artifact.slides:
+        logger.warning("Native deck %s has no slide images", artifact_id)
+        return []
+
+    logger.info(
+        "Extracting %d slide images from native deck %s",
+        len(artifact.slides), artifact_id,
+    )
+
+    cookies = load_httpx_cookies()
+    slides: list[NativeSlideData] = []
+    async with httpx.AsyncClient(cookies=cookies, follow_redirects=True, timeout=60.0) as http:
+        for i, slide in enumerate(artifact.slides):
+            image_path = None
+            if slide.image_url:
+                try:
+                    resp = await http.get(slide.image_url)
+                    resp.raise_for_status()
+                    ct = resp.headers.get("content-type", "")
+                    is_png = resp.content[:8] == b"\x89PNG\r\n\x1a\n"
+                    if "image" in ct or "octet-stream" in ct or is_png:
+                        ext = ".png" if (is_png or "png" in ct) else ".jpg" if "jpeg" in ct else ".webp" if "webp" in ct else ".png"
+                        img_file = output_dir / f"slide_{i + 1:02d}{ext}"
+                        img_file.write_bytes(resp.content)
+                        image_path = str(img_file)
+                        logger.info("Downloaded slide %d image -> %s (%d bytes)", i + 1, img_file.name, len(resp.content))
+                    else:
+                        logger.warning("Slide %d returned non-image content-type: %s", i + 1, ct)
+                except httpx.HTTPError as exc:
+                    logger.warning("Failed to download slide %d image: %s", i + 1, exc)
+
+            slides.append(NativeSlideData(
+                index=i,
+                image_path=image_path,
+                image_url=slide.image_url,
+                alt_text=slide.alt_text,
+                text=slide.text,
+                width=slide.width,
+                height=slide.height,
+            ))
+
+    logger.info("Extracted %d slides (%d with images)",
+                len(slides), sum(1 for s in slides if s.image_path))
+    return slides
 
 
 # ─── Marp rendering ────────────────────────────────────────────────────────
@@ -316,8 +394,44 @@ def _render_conclusion_slide(content: SlideContent) -> str:
     return "\n".join(lines)
 
 
-def render_marp(content: SlideContent, *, theme: str = "dark") -> str:
-    """Render a SlideContent into a complete Marp Markdown string."""
+def _render_native_slide(native: NativeSlideData, base_dir: Path | None = None) -> str:
+    """Render a slide that embeds a native NotebookLM slide image with its text."""
+    lines = []
+    if native.image_path:
+        img_p = Path(native.image_path)
+        try:
+            target_path = img_p.relative_to(base_dir).as_posix() if base_dir else img_p.resolve().as_posix()
+        except ValueError:
+            target_path = img_p.resolve().as_posix()
+        lines.append(f"![bg contain]({target_path})")
+        lines.append("")
+    # Add the slide text below if no image, or as speaker notes if image exists
+    if native.text:
+        if native.image_path:
+            wrapped = textwrap.fill(native.text, width=80)
+            lines.append(f"\n<!--\n{wrapped}\n-->\n")
+        else:
+            for para in native.text.split("\n"):
+                stripped = para.strip()
+                if stripped:
+                    lines.append(f"- {stripped}")
+            lines.append("")
+    return "\n".join(lines)
+
+
+def render_marp(
+    content: SlideContent,
+    *,
+    theme: str = "dark",
+    native_slides: list[NativeSlideData] | None = None,
+    base_dir: Path | None = None,
+) -> str:
+    """Render a SlideContent into a complete Marp Markdown string.
+
+    If *native_slides* is provided, each content slide is followed by its
+    corresponding native NotebookLM rendered image slide, giving the audience
+    both the structured Marp content and the visual richness of the native deck.
+    """
     parts = [_render_frontmatter(theme)]
     parts.append(_render_title_slide(content))
 
@@ -329,6 +443,20 @@ def render_marp(content: SlideContent, *, theme: str = "dark") -> str:
             parts.append(f"# {section.heading}\n")
             parts.append("---\n")
         parts.append(_render_section_slide(section))
+
+        # Insert the matching native slide image right after the content slide
+        if native_slides and i < len(native_slides):
+            ns = native_slides[i]
+            if ns.image_path:
+                parts.append("---\n")
+                parts.append(_render_native_slide(ns, base_dir=base_dir))
+
+    # Append any remaining native slides that exceed the section count
+    if native_slides:
+        for ns in native_slides[len(content.sections):]:
+            if ns.image_path:
+                parts.append("---\n")
+                parts.append(_render_native_slide(ns, base_dir=base_dir))
 
     parts.append("---\n")
     parts.append(_render_conclusion_slide(content))
@@ -354,6 +482,8 @@ def _export_marp(marp_path: str, fmt: str, theme_css: Path | None) -> str:
     output_path = str(Path(marp_path).with_suffix(ext))
 
     cmd = ["marp", marp_path, "-o", output_path, "--allow-local-files"]
+    if fmt in ("pdf", "html", "pptx"):
+        cmd.append(f"--{fmt}")
     if theme_css and theme_css.exists():
         cmd.extend(["--theme", str(theme_css)])
 
@@ -386,6 +516,7 @@ class ArticleToMarp:
         texts: list[str] | None = None,
         output_path: str = "slides.md",
         native_slides_path: str | None = None,
+        use_native: bool = False,
         export_format: str | None = None,
         keep_notebook: bool = False,
         instructions: str = "",
@@ -446,13 +577,10 @@ class ArticleToMarp:
                     instructions=instructions,
                 )
 
-                # 5. Render Marp markdown
-                marp_md = render_marp(content, theme=self.theme)
-                Path(output_path).write_text(marp_md, encoding="utf-8")
-                logger.info("Wrote Marp slides to %s", output_path)
+                # 5. Generate native slide deck & extract images (when requested)
+                native_slide_data: list[NativeSlideData] | None = None
 
-                # 6. Generate native NotebookLM slide deck (optional)
-                if native_slides_path:
+                if native_slides_path or use_native:
                     logger.info("Generating native NotebookLM slide deck...")
                     status = await client.artifacts.generate_slide_deck(
                         nb.id,
@@ -464,17 +592,37 @@ class ArticleToMarp:
                         nb.id, status.task_id, timeout=600,
                     )
                     if final.is_complete:
-                        dl = await client.artifacts.download_slide_deck(
-                            nb.id, native_slides_path,
-                            artifact_id=status.task_id,
-                        )
-                        result.native_path = dl
-                        logger.info("Downloaded native deck to %s", dl)
+                        # Download native PDF if path given
+                        if native_slides_path:
+                            dl = await client.artifacts.download_slide_deck(
+                                nb.id, native_slides_path,
+                                artifact_id=status.task_id,
+                            )
+                            result.native_path = dl
+                            logger.info("Downloaded native deck to %s", dl)
+
+                        # Extract slide images + text for Marp embedding
+                        if use_native:
+                            out_dir = Path(output_path).parent / "slide_images"
+                            native_slide_data = await extract_native_slides(
+                                client, nb.id, status.task_id, out_dir,
+                            )
+                            result.native_slides = native_slide_data
+                            result.images_dir = str(out_dir)
                     else:
                         logger.warning(
                             "Native deck generation ended with: %s",
                             final.status,
                         )
+
+                # 6. Render Marp markdown (with optional native images)
+                marp_md = render_marp(
+                    content, theme=self.theme,
+                    native_slides=native_slide_data,
+                    base_dir=Path(output_path).resolve().parent,
+                )
+                Path(output_path).write_text(marp_md, encoding="utf-8")
+                logger.info("Wrote Marp slides to %s", output_path)
 
                 # 7. Export (optional)
                 if export_format:
@@ -538,6 +686,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Also generate native NotebookLM slide deck at this path",
     )
     parser.add_argument(
+        "--use-native", action="store_true",
+        help="Extract native slide images & embed them in the Marp deck",
+    )
+    parser.add_argument(
         "--export", choices=["pdf", "html", "pptx"],
         help="Export format (requires marp-cli)",
     )
@@ -568,6 +720,7 @@ async def async_main(args: argparse.Namespace) -> None:
         texts=args.texts or None,
         output_path=args.output,
         native_slides_path=args.native_slides,
+        use_native=args.use_native,
         export_format=args.export,
         keep_notebook=args.keep_notebook,
         instructions=args.instructions,
@@ -576,6 +729,9 @@ async def async_main(args: argparse.Namespace) -> None:
     print(f"\n✅ Marp slides written to: {result.marp_path}")
     if result.native_path:
         print(f"✅ Native NotebookLM deck: {result.native_path}")
+    if result.native_slides:
+        n_imgs = sum(1 for s in result.native_slides if s.image_path)
+        print(f"🖼️  Extracted {n_imgs} slide images → {result.images_dir}/")
     if result.export_path:
         print(f"✅ Exported to: {result.export_path}")
     if result.notebook_id and args.keep_notebook:
