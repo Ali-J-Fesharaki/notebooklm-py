@@ -381,6 +381,7 @@ class AndroidNotesAPI(NotesAPI):
             return
 
         def present_ids(response: Any, candidates: builtins.list[str]) -> builtins.list[str]:
+            """Return only requested IDs whose exact note rows remain visible."""
             # Exact-ID lookup preserves the singular API's note-backed map
             # support. Never expand the request to other rows in the notebook.
             return [

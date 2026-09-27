@@ -34,6 +34,7 @@ MISSING = "dddddddd-dddd-dddd-dddd-dddddddddddd"
 
 @pytest.fixture
 def studio_client(mock_client):
+    """Expose two text notes and a mind map for cross-kind batch scenarios."""
     mock_client.notes.list = AsyncMock(
         return_value=[
             SimpleNamespace(id=NOTE_A, title="First", content="one"),
@@ -52,6 +53,7 @@ def studio_client(mock_client):
 async def test_studio_batch_preview_resolves_once_and_lists_only_explicit_items(
     mcp_call, studio_client
 ):
+    """Preview deduplicates selected references and reports misses without writing."""
     result = await mcp_call(
         "studio_delete", {"notebook": NB, "items": ["First", NOTE_A, "Second", MISSING]}
     )
@@ -70,6 +72,7 @@ async def test_studio_batch_preview_resolves_once_and_lists_only_explicit_items(
 
 
 async def test_studio_batch_deletes_notes_once_and_reports_missing_ids(mcp_call, studio_client):
+    """Canonical note IDs share one write while missing IDs remain separate outcomes."""
     result = await mcp_call(
         "studio_delete",
         {"notebook": NB, "items": [NOTE_A.upper(), NOTE_B, NOTE_A, MISSING], "confirm": True},
@@ -93,6 +96,7 @@ async def test_studio_batch_deletes_notes_once_and_reports_missing_ids(mcp_call,
 async def test_studio_batch_routes_explicit_mind_maps_by_backing(
     mcp_call, studio_client, note_backed
 ):
+    """Only text notes enter the batch; each selected map uses its backing's delete path."""
     if note_backed:
         studio_client.mind_maps.list_note_backed.return_value = [SimpleNamespace(id=MAP)]
     result = await mcp_call(
@@ -114,6 +118,7 @@ async def test_studio_batch_routes_explicit_mind_maps_by_backing(
 
 @pytest.mark.parametrize("items", [[MISSING], MISSING, f'["{MISSING}"]'])
 async def test_studio_batch_all_missing_is_a_noop(mcp_call, studio_client, items):
+    """Every supported batch encoding preserves idempotency for absent IDs."""
     result = await mcp_call("studio_delete", {"notebook": NB, "items": items, "confirm": True})
     assert result.structured_content["deleted"] == []
     assert result.structured_content["not_found_count"] == 1
@@ -133,6 +138,7 @@ async def test_studio_batch_all_missing_is_a_noop(mcp_call, studio_client, items
     ],
 )
 async def test_studio_batch_rejects_invalid_input_before_client_open(mcp_call, monkeypatch, args):
+    """Invalid or unsafe selections fail before opening a client."""
     get_client = AsyncMock(side_effect=AssertionError("unexpected client open"))
     monkeypatch.setattr(studio_tools, "get_client", get_client)
     with pytest.raises(ToolError, match="VALIDATION"):
@@ -141,6 +147,7 @@ async def test_studio_batch_rejects_invalid_input_before_client_open(mcp_call, m
 
 
 async def test_studio_batch_ambiguous_title_aborts_before_deleting(mcp_call, studio_client):
+    """A cross-kind title collision prevents the entire preview from resolving."""
     studio_client.artifacts.list.return_value[0].title = "Second"
     with pytest.raises(ToolError, match="(?i)ambiguous"):
         await mcp_call("studio_delete", {"notebook": NB, "items": ["First", "Second"]})
@@ -152,6 +159,7 @@ async def test_studio_batch_ambiguous_title_aborts_before_deleting(mcp_call, stu
 async def test_studio_batch_incomplete_listing_aborts_before_reporting_or_deleting(
     mcp_call, studio_client, confirm
 ):
+    """An unavailable backing cannot become a false missing-item result or partial write."""
     studio_client.artifacts.list_with_status = AsyncMock(
         return_value=ArtifactListing(
             items=(),
@@ -175,6 +183,7 @@ async def test_studio_batch_incomplete_listing_aborts_before_reporting_or_deleti
 
 
 async def test_studio_batch_failure_does_not_report_deletes_or_continue(mcp_call, studio_client):
+    """A failed note write stops later artifact writes and propagates the error."""
     studio_client.notes.delete.side_effect = RPCError("denied")
     with pytest.raises(ToolError, match="denied"):
         await mcp_call(
@@ -185,6 +194,7 @@ async def test_studio_batch_failure_does_not_report_deletes_or_continue(mcp_call
 
 
 async def test_studio_batch_strict_ids_rejects_titles_before_open(mcp_call, monkeypatch):
+    """Strict-ID mode rejects fuzzy selections before notebook resolution."""
     monkeypatch.setenv("NOTEBOOKLM_MCP_STRICT_IDS", "1")
     get_client = AsyncMock(side_effect=AssertionError("unexpected client open"))
     monkeypatch.setattr(studio_tools, "get_client", get_client)
@@ -200,6 +210,7 @@ GRANTS = [
 
 
 async def test_share_batch_preview_includes_every_grant_and_call_flags(mcp_call, mock_client):
+    """Sharing previews expose all grantees and batch-wide settings without writing."""
     result = await mcp_call(
         "share_set_user", {"notebook": NB, "grants": GRANTS, "notify": True, "message": "Welcome"}
     )
@@ -218,6 +229,7 @@ async def test_share_batch_preview_includes_every_grant_and_call_flags(mcp_call,
 
 
 async def test_share_batch_mixed_permissions_use_one_call(mcp_call, mock_client):
+    """Confirmed mixed-role grants delegate to one sharing call with common email flags."""
     mock_client.sharing.set_users = AsyncMock(
         return_value=ShareStatus(NB, False, ShareAccess.RESTRICTED, ShareViewLevel.FULL_NOTEBOOK)
     )
@@ -239,6 +251,7 @@ async def test_share_batch_mixed_permissions_use_one_call(mcp_call, mock_client)
 
 
 async def test_share_batch_defaults_each_grant_to_viewer_and_no_email(mcp_call, mock_client):
+    """Omitted grant settings retain the least-privilege role and silent notification mode."""
     mock_client.sharing.set_users = AsyncMock(
         return_value=ShareStatus(NB, False, ShareAccess.RESTRICTED, ShareViewLevel.FULL_NOTEBOOK)
     )
@@ -266,6 +279,7 @@ async def test_share_batch_defaults_each_grant_to_viewer_and_no_email(mcp_call, 
 async def test_share_batch_invalid_input_never_opens_client(
     mcp_call, mock_client, monkeypatch, args
 ):
+    """Malformed, conflicting, or duplicate grants fail before any client access."""
     get_client = AsyncMock(side_effect=AssertionError("unexpected client open"))
     monkeypatch.setattr(sharing_tools, "get_client", get_client)
     with pytest.raises(ToolError):

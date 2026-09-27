@@ -684,7 +684,8 @@ and `not_found` arrays with counts. Missing IDs never become claimed deletions;
 ambiguous names abort the plan before any write. Omitting both selectors is an error.
 An incomplete Studio inventory also aborts before any write. Batch steps share the
 configured operation deadline; if a later step fails, error metadata retains earlier
-mutation evidence.
+mutation evidence. Deleting a mix of notes and artifacts is not atomic. After a
+failure, refresh `studio_list` to reconcile the remaining IDs before retrying.
 
 `share_set_user` accepts either `email` + `permission` or a `grants` array:
 

@@ -396,6 +396,7 @@ def _visible(note_id: str = "note-1") -> notes_pb2.GetNotesResponse:
 
 
 def test_backend_contracts_are_split_and_android_adapters_are_concrete() -> None:
+    """Pin concrete Android adapters to the transport-neutral public signatures."""
     import inspect
 
     assert NotesAPI.__abstractmethods__ == frozenset(
@@ -756,6 +757,7 @@ async def test_exact_id_get_update_and_delete_preserve_web_map_row_semantics() -
 
 @pytest.mark.asyncio
 async def test_batch_note_delete_uses_one_write_and_preserves_unselected_maps() -> None:
+    """Delete only present selected notes in one epoch-bound, non-replayed request."""
     server = FakeNotesSharingServer()
     server.notes["note-second"] = notes_pb2.ProjectNote(id="note-second", content="Second")
     notes = AndroidNotesAPI(_session(server), deletion_poll_delays=(0.0, 0.0))
@@ -775,6 +777,7 @@ async def test_batch_note_delete_uses_one_write_and_preserves_unselected_maps() 
 
 @pytest.mark.asyncio
 async def test_batch_note_delete_empty_or_invalid_never_opens_transport() -> None:
+    """Empty and malformed selections never admit an Android operation."""
     server = FakeNotesSharingServer()
     notes = AndroidNotesAPI(_session(server))
     await notes.delete("project-1", [])
@@ -786,6 +789,7 @@ async def test_batch_note_delete_empty_or_invalid_never_opens_transport() -> Non
 
 @pytest.mark.asyncio
 async def test_batch_note_delete_missing_member_does_not_imply_batch_success() -> None:
+    """A batch status-5 response requires read-back evidence for every selected note."""
     visible = notes_pb2.GetNotesResponse(
         notes=[
             notes_pb2.NoteOrStatus(note=notes_pb2.ProjectNote(id=note_id, content="body"))

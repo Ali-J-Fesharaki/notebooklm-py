@@ -23,6 +23,7 @@ ART = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
 
 
 def _client(timeout: float | None = None):
+    """Bind minimal Studio namespaces to the real operation supervisor."""
     supervisor = CallSupervisor(
         metrics=ClientMetrics(), max_concurrent_rpcs=1, operation_timeout=timeout
     )
@@ -32,15 +33,18 @@ def _client(timeout: float | None = None):
     client._collaborators = SimpleNamespace(call_supervisor=supervisor)
 
     async def notes_list(_):
+        """Expose the text note selected for the first write."""
         return [SimpleNamespace(id=NOTE, title="note", content="body")]
 
     async def artifacts_list_with_status(_):
+        """Expose an authoritative artifact snapshot for mixed-batch resolution."""
         return ArtifactListing(
             items=(SimpleNamespace(id=ART, title="report", kind=ArtifactType.REPORT),),
             is_complete=True,
         )
 
     async def maps_list(_):
+        """Keep the report on the artifact deletion path."""
         return []
 
     client.notes = SimpleNamespace(list=notes_list)
@@ -51,25 +55,28 @@ def _client(timeout: float | None = None):
 
 @pytest.mark.asyncio
 async def test_batch_studio_delete_shares_one_configured_budget(monkeypatch):
-    # Existing real-supervisor seam from tests/unit/test_app_operation_scopes.py.
-    # Advancing the loop clock eliminates timing jitter and proves the remaining
-    # budget is measured across writes rather than restarted per namespace call.
-    client, supervisor = _client(0.015)
+    """The second write cannot restart the budget consumed by the first write."""
+    # Advance virtual time in seconds, comfortably above Windows' clock resolution.
+    # asyncio may dispatch timers one clock-resolution early while inventory reads
+    # yield, so a millisecond-scale budget can expire before the first write.
+    client, supervisor = _client(15.0)
     loop = asyncio.get_running_loop()
     now = loop.time()
     monkeypatch.setattr(loop, "time", lambda: now)
     dispatched = []
 
     async def notes_delete(*_):
+        """Consume part of the budget after the first write is admitted."""
         nonlocal now
         async with supervisor.operation_scope("notes.delete"):
             dispatched.append("notes")
-            now += 0.010
+            now += 10.0
 
     async def artifacts_delete(*_):
+        """Cross the aggregate deadline before dispatching the second write."""
         nonlocal now
         async with supervisor.operation_scope("artifacts.delete"):
-            now += 0.010
+            now += 10.0
             async with supervisor.call_scope("artifact.dispatch", None, None):
                 dispatched.append("artifact")
 
@@ -83,9 +90,11 @@ async def test_batch_studio_delete_shares_one_configured_budget(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_batch_studio_delete_retains_prior_confirmed_note_write():
+    """A later rejected artifact write preserves the confirmed note deletion."""
     client, supervisor = _client()
 
     async def notes_delete(*_):
+        """Record a successful note mutation in the enclosing operation journal."""
         async with supervisor.operation_scope("notes.delete"):
             entry = adopt_operation_journal_entry(
                 supervisor, method="DELETE_NOTE", operation="notes.delete"
@@ -95,6 +104,7 @@ async def test_batch_studio_delete_retains_prior_confirmed_note_write():
             entry.record(CommitState.CONFIRMED, "note delete accepted", known_resource_ids=(NOTE,))
 
     async def artifacts_delete(*_):
+        """Record a rejected artifact mutation and propagate its failure."""
         async with supervisor.operation_scope("artifacts.delete"):
             entry = adopt_operation_journal_entry(
                 supervisor, method="DELETE_ARTIFACT", operation="artifacts.delete"
